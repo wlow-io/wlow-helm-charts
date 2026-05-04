@@ -11,7 +11,7 @@ Helm charts for deploying [wlow](https://github.com/wlow/wlow-core) on Kubernete
 ## Install
 
 ```sh
-helm repo add wlow https://wlow-io.github.io/wlow-charts
+helm repo add wlow https://wlow-io.github.io/wlow-helm-charts
 helm install wlow wlow/wlow \
   --namespace wlow \
   --create-namespace \
