@@ -1,0 +1,112 @@
+{{- if .Values.runner.enabled }}
+{{- $isDaemonSet := eq .Values.runner.kind "DaemonSet" }}
+apiVersion: apps/v1
+kind: {{ .Values.runner.kind }}
+metadata:
+  name: {{ include "wlow.fullname" . }}-runner
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runner
+spec:
+  {{- if not $isDaemonSet }}
+  replicas: {{ .Values.runner.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "wlow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: runner
+  template:
+    metadata:
+      labels:
+        {{- include "wlow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: runner
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.runner.kvm.enabled }}
+      nodeSelector:
+        {{ .Values.runner.kvm.nodeLabel }}: {{ .Values.runner.kvm.nodeLabelValue | quote }}
+      tolerations:
+        - key: {{ .Values.runner.kvm.taint | quote }}
+          operator: Equal
+          value: {{ .Values.runner.kvm.taintValue | quote }}
+          effect: {{ .Values.runner.kvm.taintEffect }}
+      {{- end }}
+      containers:
+        - name: runner
+          image: {{ include "wlow.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/bin/tini", "--", "/usr/local/bin/wlow-runner"]
+          env:
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            - name: STORE_BUCKET
+              value: {{ .Values.controlPlane.store.bucket | quote }}
+            - name: WORKFLOW_SUBJECT_PREFIX
+              value: {{ .Values.controlPlane.workflow.subjectPrefix | quote }}
+            - name: PROCESSOR_STREAM
+              value: {{ .Values.controlPlane.processor.stream | quote }}
+            - name: PROCESSOR_SUBJECT_PREFIX
+              value: {{ .Values.controlPlane.processor.subjectPrefix | quote }}
+            - name: WLOW_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: WLOW_RUNTIMES
+              value: {{ .Values.runner.runtimes | quote }}
+            - name: WLOW_DATA_DIR
+              value: {{ .Values.runner.dataDir | quote }}
+            - name: WLOW_CONCURRENCY
+              value: {{ .Values.runner.concurrency | quote }}
+            - name: WLOW_AGENT_BINARY
+              value: {{ .Values.runner.agent.binary | quote }}
+            - name: WLOW_KERNEL_PATH
+              value: {{ .Values.runner.kernel.path | quote }}
+            - name: WLOW_FIRECRACKER_BINARY
+              value: {{ .Values.runner.firecracker.binary | quote }}
+            - name: WLOW_FIRECRACKER_ENABLE_PCI
+              value: {{ .Values.runner.firecracker.enablePCI | quote }}
+            {{- if .Values.runner.registry }}
+            - name: WLOW_REGISTRY
+              value: {{ .Values.runner.registry | quote }}
+            {{- end }}
+            {{- if .Values.runner.snapshotRegistry }}
+            - name: WLOW_SNAPSHOT_REGISTRY
+              value: {{ .Values.runner.snapshotRegistry | quote }}
+            {{- end }}
+            {{- if .Values.runner.imagePullAuth.secretName }}
+            - name: IMAGE_PULL_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runner.imagePullAuth.secretName | quote }}
+                  key: {{ .Values.runner.imagePullAuth.key | quote }}
+                  optional: true
+            {{- end }}
+          {{- if .Values.runner.kvm.enabled }}
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+            runAsUser: 0
+          {{- end }}
+          volumeMounts:
+            - name: wlow-data
+              mountPath: {{ .Values.runner.dataDir }}
+            {{- if .Values.runner.kvm.enabled }}
+            - name: kvm
+              mountPath: /dev/kvm
+            {{- end }}
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}
+      volumes:
+        - name: wlow-data
+          emptyDir: {}
+        {{- if .Values.runner.kvm.enabled }}
+        - name: kvm
+          hostPath:
+            path: /dev/kvm
+            type: CharDevice
+        {{- end }}
+{{- end }}

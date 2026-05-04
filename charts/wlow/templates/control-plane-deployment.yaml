@@ -1,0 +1,53 @@
+{{- if .Values.controlPlane.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wlow.fullname" . }}-control-plane
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.controlPlane.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "wlow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        {{- include "wlow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: control-plane
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: orchestrator
+          image: {{ include "wlow.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/bin/tini", "--", "/usr/local/bin/wlow", "start", "--control-plane"]
+          env:
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            - name: STORE_BUCKET
+              value: {{ .Values.controlPlane.store.bucket | quote }}
+            - name: WORKFLOW_STREAM
+              value: {{ .Values.controlPlane.workflow.stream | quote }}
+            - name: WORKFLOW_SUBJECT_PREFIX
+              value: {{ .Values.controlPlane.workflow.subjectPrefix | quote }}
+            - name: PROCESSOR_STREAM
+              value: {{ .Values.controlPlane.processor.stream | quote }}
+            - name: PROCESSOR_SUBJECT_PREFIX
+              value: {{ .Values.controlPlane.processor.subjectPrefix | quote }}
+          ports:
+            - name: dashboard
+              containerPort: {{ .Values.controlPlane.service.dashboard.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.controlPlane.service.metrics.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+{{- end }}

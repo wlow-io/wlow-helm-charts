@@ -1,0 +1,18 @@
+apiVersion: v2
+name: wlow
+description: DAG workflow orchestrator — control plane and runner
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - workflow
+  - orchestrator
+  - nats
+  - firecracker
+  - microvm
+home: https://github.com/wlow/wlow-core
+sources:
+  - https://github.com/wlow/wlow-core
+  - https://github.com/wlow/wlow-runner
+maintainers:
+  - name: wlow maintainers

@@ -1,0 +1,114 @@
+{{- if .Values.buildkit.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wlow.fullname" . }}-buildkit
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit
+spec:
+  replicas: {{ .Values.buildkit.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "wlow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: buildkit
+  template:
+    metadata:
+      labels:
+        {{- include "wlow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: buildkit
+      annotations:
+        # Restart when config changes
+        checksum/config: {{ .Values.buildkit.rootless | toString | sha256sum }}
+    spec:
+      containers:
+        - name: buildkit
+          image: {{ .Values.buildkit.image.repository }}:{{ .Values.buildkit.image.tag }}
+          imagePullPolicy: {{ .Values.buildkit.image.pullPolicy }}
+          {{- if .Values.buildkit.rootless }}
+          args:
+            - --addr
+            - tcp://0.0.0.0:{{ .Values.buildkit.service.port }}
+            - --addr
+            - unix:///run/buildkit/buildkitd.sock
+            - --oci-worker-no-process-sandbox
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            runAsUser: 1000
+            runAsGroup: 1000
+          {{- else }}
+          args:
+            - --addr
+            - tcp://0.0.0.0:{{ .Values.buildkit.service.port }}
+            - --addr
+            - unix:///run/buildkit/buildkitd.sock
+          securityContext:
+            privileged: true
+          {{- end }}
+          ports:
+            - name: buildkit
+              containerPort: {{ .Values.buildkit.service.port }}
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command: [buildctl, debug, workers]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [buildctl, debug, workers]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          volumeMounts:
+            - name: buildkit-cache
+              mountPath: /var/lib/buildkit
+          resources:
+            {{- toYaml .Values.buildkit.resources | nindent 12 }}
+      volumes:
+        - name: buildkit-cache
+          {{- if .Values.buildkit.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "wlow.fullname" . }}-buildkit
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wlow.fullname" . }}-buildkit
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit
+spec:
+  selector:
+    {{- include "wlow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit
+  ports:
+    - name: buildkit
+      port: {{ .Values.buildkit.service.port }}
+      targetPort: buildkit
+      protocol: TCP
+{{- if .Values.buildkit.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "wlow.fullname" . }}-buildkit
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.buildkit.persistence.size }}
+  {{- with .Values.buildkit.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

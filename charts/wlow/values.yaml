@@ -1,0 +1,178 @@
+# wlow Helm chart values
+# Override any of these in your values file or with --set.
+
+image:
+  repository: ghcr.io/wlow-io/wlow-runtime
+  tag: ""          # defaults to Chart.AppVersion
+  pullPolicy: Always
+  pullSecrets: []  # list of imagePullSecrets names
+
+# ── NATS ──────────────────────────────────────────────────────────────────────
+
+# External NATS URL used by control-plane, runner, and MCP when
+# nats.cluster.enabled is false.
+nats:
+  url: nats://nats.nats:4222
+
+  # Deploy a minimal NATS cluster inside this release.
+  # Requires the nats Helm chart: helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+  # This is a convenience wrapper — for production use the NATS chart directly.
+  cluster:
+    enabled: false
+    replicaCount: 3
+    jetstream:
+      enabled: true
+      memStorage: 1Gi
+      fileStorage: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+
+# ── Control plane ─────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: true
+  replicaCount: 1
+
+  workflow:
+    stream: WLOW_WORKFLOW
+    subjectPrefix: wlow.workflow
+
+  processor:
+    stream: WLOW_PROCESSOR
+    subjectPrefix: wlow.processor
+
+  store:
+    bucket: workflow-state
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  service:
+    dashboard:
+      port: 8085
+    metrics:
+      port: 2112
+
+# ── Runner ────────────────────────────────────────────────────────────────────
+
+runner:
+  enabled: true
+
+  # kind: Deployment   — fixed replica count, flexible placement
+  # kind: DaemonSet    — one pod per matching node (recommended for KVM)
+  kind: Deployment
+  replicaCount: 1      # ignored when kind=DaemonSet
+
+  runtimes: "microvm,snapshot"
+  concurrency: 2
+  dataDir: /var/lib/wlow/data
+
+  # OCI registry for processor artifacts.
+  # Set to your registry prefix, e.g. ghcr.io/your-org/wlow-artifacts
+  registry: ""
+  snapshotRegistry: ""  # defaults to registry if empty
+
+  # IMAGE_PULL_AUTH: base64-encoded Docker config JSON for private registries.
+  # Create a secret and reference it here:
+  #   kubectl create secret generic oci-pull-auth \
+  #     --from-literal=IMAGE_PULL_AUTH='{"auths":{"ghcr.io":{"auth":"..."}}}'
+  imagePullAuth:
+    secretName: ""
+    key: IMAGE_PULL_AUTH
+
+  # KVM node selection. Set enabled=false for process/WASM-only runners.
+  kvm:
+    enabled: true
+    nodeLabel: wlow.io/kvm
+    nodeLabelValue: "true"
+    taint: wlow.io/kvm
+    taintValue: "true"
+    taintEffect: NoSchedule
+
+  # Paths to binaries inside the runtime image
+  agent:
+    binary: /usr/local/bin/wlow-agent
+  kernel:
+    path: /var/lib/wlow/kernel/vmlinux
+  firecracker:
+    binary: /usr/local/bin/firecracker
+    enablePCI: "true"
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+# ── MCP server ────────────────────────────────────────────────────────────────
+
+mcp:
+  enabled: false
+  replicaCount: 1
+  addr: ":8088"
+
+  service:
+    type: ClusterIP
+    port: 8088
+
+  # Set type: LoadBalancer or add an Ingress to expose externally.
+  # ingress:
+  #   enabled: true
+  #   className: nginx
+  #   host: mcp.example.com
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ── BuildKit ──────────────────────────────────────────────────────────────────
+
+buildkit:
+  enabled: false
+  replicaCount: 1
+
+  image:
+    repository: moby/buildkit
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # rootless mode (no privileged). Set to false for rootful (faster, needs privileged).
+  rootless: true
+
+  service:
+    port: 1234
+
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""  # uses default storage class
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+# ── Namespace ─────────────────────────────────────────────────────────────────
+
+namespace:
+  create: true
+  name: wlow

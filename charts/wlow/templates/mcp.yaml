@@ -1,0 +1,64 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wlow.fullname" . }}-mcp
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: {{ .Values.mcp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "wlow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mcp
+  template:
+    metadata:
+      labels:
+        {{- include "wlow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mcp
+          image: {{ include "wlow.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/bin/tini", "--", "/usr/local/bin/wlow-mcp"]
+          args:
+            - --nats
+            - {{ .Values.nats.url | quote }}
+            - --addr
+            - {{ .Values.mcp.addr | quote }}
+          env:
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+          ports:
+            - name: mcp
+              containerPort: {{ trimPrefix ":" .Values.mcp.addr | int }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wlow.fullname" . }}-mcp
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  type: {{ .Values.mcp.service.type }}
+  selector:
+    {{- include "wlow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  ports:
+    - name: mcp
+      port: {{ .Values.mcp.service.port }}
+      targetPort: mcp
+      protocol: TCP
+{{- end }}

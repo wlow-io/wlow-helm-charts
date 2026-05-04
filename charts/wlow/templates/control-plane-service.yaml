@@ -1,0 +1,23 @@
+{{- if .Values.controlPlane.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wlow.fullname" . }}-control-plane
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  selector:
+    {{- include "wlow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+  ports:
+    - name: dashboard
+      port: {{ .Values.controlPlane.service.dashboard.port }}
+      targetPort: dashboard
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.controlPlane.service.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

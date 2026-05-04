@@ -1,0 +1,43 @@
+wlow has been deployed.
+
+Control plane:
+  kubectl -n {{ include "wlow.namespace" . }} get deploy {{ include "wlow.fullname" . }}-control-plane
+
+Runner:
+  kubectl -n {{ include "wlow.namespace" . }} get {{ lower .Values.runner.kind }} {{ include "wlow.fullname" . }}-runner
+{{- if .Values.mcp.enabled }}
+
+MCP server:
+  kubectl -n {{ include "wlow.namespace" . }} get deploy {{ include "wlow.fullname" . }}-mcp
+  kubectl -n {{ include "wlow.namespace" . }} port-forward svc/{{ include "wlow.fullname" . }}-mcp 8088:8088
+  # Then add to Cursor / Claude Desktop: http://localhost:8088/mcp
+{{- end }}
+{{- if .Values.buildkit.enabled }}
+
+BuildKit:
+  kubectl -n {{ include "wlow.namespace" . }} get deploy {{ include "wlow.fullname" . }}-buildkit
+  # Port-forward for wlow push:
+  kubectl -n {{ include "wlow.namespace" . }} port-forward svc/{{ include "wlow.fullname" . }}-buildkit 1234:1234
+  export BUILDKIT_HOST=tcp://127.0.0.1:1234
+{{- end }}
+{{- if .Values.nats.cluster.enabled }}
+
+NATS cluster (embedded — for dev/staging):
+  kubectl -n {{ include "wlow.namespace" . }} get statefulset {{ include "wlow.fullname" . }}-nats
+  # Port-forward:
+  kubectl -n {{ include "wlow.namespace" . }} port-forward svc/{{ include "wlow.fullname" . }}-nats 4222:4222
+{{- else }}
+
+NATS: {{ .Values.nats.url }}
+{{- end }}
+
+Port-forward the dashboard:
+  kubectl -n {{ include "wlow.namespace" . }} port-forward svc/{{ include "wlow.fullname" . }}-control-plane 8085:8085
+  open http://localhost:8085
+
+Start a processor from your workstation:
+  wlow start --nats {{ .Values.nats.url }} --id my-proc --cmd "python3 /path/to/processor.py"
+
+For microVM processors, set WLOW_REGISTRY and push a processor:
+  wlow push --nats {{ .Values.nats.url }} --id my-proc --runtime microvm \
+    --path Dockerfile --registry <your-registry>

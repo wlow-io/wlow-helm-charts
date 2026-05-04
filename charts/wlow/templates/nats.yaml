@@ -1,0 +1,105 @@
+{{- if .Values.nats.cluster.enabled }}
+{{- /*
+  Minimal NATS JetStream cluster. For production, use the official NATS Helm
+  chart (helm repo add nats https://nats-io.github.io/k8s/helm/charts/).
+  This embedded deployment is a convenience for dev/staging only.
+*/ -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "wlow.fullname" . }}-nats
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  replicas: {{ .Values.nats.cluster.replicaCount }}
+  serviceName: {{ include "wlow.fullname" . }}-nats-headless
+  selector:
+    matchLabels:
+      {{- include "wlow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- include "wlow.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      containers:
+        - name: nats
+          image: nats:latest
+          args:
+            - -js
+            - -cluster
+            - nats://0.0.0.0:6222
+            - -routes
+            - nats://{{ include "wlow.fullname" . }}-nats-headless:6222
+            - -store_dir
+            - /data
+            - -max_mem
+            - {{ .Values.nats.cluster.jetstream.memStorage }}
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitor
+              containerPort: 8222
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8222
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.nats.cluster.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.nats.cluster.jetstream.fileStorage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wlow.fullname" . }}-nats
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  selector:
+    {{- include "wlow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+    - name: monitor
+      port: 8222
+      targetPort: monitor
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wlow.fullname" . }}-nats-headless
+  namespace: {{ include "wlow.namespace" . }}
+  labels:
+    {{- include "wlow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  clusterIP: None
+  selector:
+    {{- include "wlow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+  ports:
+    - name: cluster
+      port: 6222
+      targetPort: cluster
+{{- end }}
